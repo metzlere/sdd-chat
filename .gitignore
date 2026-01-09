@@ -1,2 +1,7 @@
 venv/
 *:Zone.Identifier
+
+# User projects and quickspec work are local artifacts, not part of the package
+projects/*
+!projects/.gitkeep
+.sdd-chat-state.json

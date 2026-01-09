@@ -63,6 +63,37 @@ python sdd_chat.py phase 4  # Tasks
 python sdd_chat.py phase 5  # Implementation
 ```
 
+## QuickSpec: Lightweight Workflow Option
+
+For small features that don't require the full 6-phase process, SDD-Chat offers **QuickSpec** - a streamlined 3-phase workflow (spec → plan → build).
+
+### When to Use QuickSpec vs. Full Workflow
+
+| Criteria | QuickSpec | Full Workflow |
+|----------|-----------|---------------|
+| **Feature Size** | Touches <5-7 files | Touches 5+ files or complex changes |
+| **Complexity** | Simple, well-understood requirements | Complex requirements, multiple stakeholders |
+| **Examples** | Bug fixes, small enhancements, UI tweaks | New features, API changes, architecture work |
+| **Documentation** | Minimal (spec.md, plan.md) | Comprehensive (constitution, spec, plan, tasks, etc.) |
+| **Time Investment** | Minutes to start | Requires upfront planning time |
+
+### QuickSpec Commands
+
+```bash
+# Start a new quickspec feature
+python sdd_chat.py quickspec "add dark mode toggle"
+
+# View all quickspec features and their status
+python sdd_chat.py quickspec-status
+```
+
+The `quickspec` command guides you through three phases:
+1. **Spec**: Creates a lightweight spec.md with What/Why/Acceptance/OutOfScope
+2. **Plan**: Creates a plan.md with Files/Approach/Risks
+3. **Build**: Provides implementation guidance
+
+Features are tracked in `.quickspec/NNN-feature-name/` directories.
+
 ## CLI Commands
 
 | Command | Description |
@@ -76,6 +107,8 @@ python sdd_chat.py phase 5  # Implementation
 | `bundle <0-5>` | Generate context bundle for copy/paste |
 | `complete <task-id>` | Mark a task as complete |
 | `setup` | Create initial directory structure |
+| `quickspec <description>` | Start a quickspec feature (lightweight workflow) |
+| `quickspec-status` | Show all quickspec features and their status |
 
 ## Directory Structure
 
@@ -97,15 +130,22 @@ sdd-chat/
 └── projects/                # Your projects
     └── my-project/
         ├── constitution.md
-        └── specs/
-            ├── 001-feature-a/
+        ├── specs/           # Full workflow features
+        │   ├── 001-feature-a/
+        │   │   ├── spec.md
+        │   │   ├── plan.md
+        │   │   ├── data-model.md
+        │   │   ├── tasks.md
+        │   │   └── contracts/
+        │   └── 002-feature-b/
+        │       └── ...
+        └── .quickspec/      # QuickSpec workflow features
+            ├── 001-dark-mode-toggle/
             │   ├── spec.md
-            │   ├── plan.md
-            │   ├── data-model.md
-            │   ├── tasks.md
-            │   └── contracts/
-            └── 002-feature-b/
-                └── ...
+            │   └── plan.md
+            └── 002-user-preferences/
+                ├── spec.md
+                └── plan.md
 ```
 
 ## Using Context Bundles
