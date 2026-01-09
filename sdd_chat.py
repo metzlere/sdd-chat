@@ -89,7 +89,7 @@ def load_state() -> dict:
     """Load the current state from the state file."""
     if STATE_FILE.exists():
         return json.loads(STATE_FILE.read_text())
-    return {"current_project": None, "current_feature": None}
+    return {"current_project": None, "current_feature": None, "current_quickspec": None}
 
 
 def save_state(state: dict) -> None:
@@ -139,6 +139,45 @@ def read_file_safe(path: Path) -> Optional[str]:
     if path.exists():
         return path.read_text()
     return None
+
+
+def get_quickspec_dir(project: str) -> Path:
+    """Get the quickspec directory for a project."""
+    return PROJECTS_DIR / project / ".quickspec"
+
+
+def list_quickspec_features(project: str) -> list[str]:
+    """List all quickspec features for a project."""
+    quickspec_dir = get_quickspec_dir(project)
+    if not quickspec_dir.exists():
+        return []
+    return sorted([d.name for d in quickspec_dir.iterdir() if d.is_dir()])
+
+
+def get_next_quickspec_number(project: str) -> int:
+    """Get the next quickspec feature number for a project."""
+    features = list_quickspec_features(project)
+    if not features:
+        return 1
+    numbers = []
+    for f in features:
+        if f[:3].isdigit():
+            numbers.append(int(f[:3]))
+    return max(numbers) + 1 if numbers else 1
+
+
+def create_slug(description: str) -> str:
+    """Create a kebab-case slug from a description."""
+    import re
+    # Convert to lowercase and replace spaces/underscores with hyphens
+    slug = description.lower().replace("_", "-").replace(" ", "-")
+    # Remove any characters that aren't alphanumeric or hyphens
+    slug = re.sub(r'[^a-z0-9-]', '', slug)
+    # Remove consecutive hyphens
+    slug = re.sub(r'-+', '-', slug)
+    # Remove leading/trailing hyphens
+    slug = slug.strip('-')
+    return slug
 
 
 def print_header(text: str) -> None:
@@ -927,6 +966,192 @@ def complete(
     else:
         print_warning(f"Could not find {task_id} in progress tracking table.")
         print_info("You may need to update tasks.md manually.")
+
+
+@app.command()
+def quickspec(
+    description: str = typer.Argument(..., help="Feature description"),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name (uses current if not specified)"),
+):
+    """
+    QuickSpec workflow: Lightweight spec-driven development for small features.
+
+    This is a streamlined 3-phase workflow (spec → plan → build) for features
+    that don't require the full 6-phase process. Best for features touching <5-7 files.
+    """
+    print_header("QuickSpec: Lightweight Spec-Driven Development")
+
+    # Get current project
+    state = load_state()
+    project = project or state.get("current_project")
+
+    if not project:
+        print_error("No project specified. Run 'sdd-chat init <project>' or 'sdd-chat use <project>' first.")
+        raise typer.Abort()
+
+    project_path = get_project_path(project)
+    if not project_path.exists():
+        print_error(f"Project '{project}' does not exist. Run 'sdd-chat init {project}' first.")
+        raise typer.Abort()
+
+    # Setup
+    feature_num = get_next_quickspec_number(project)
+    slug = create_slug(description)
+    feature_dir = f"{feature_num:03d}-{slug}"
+    quickspec_dir = get_quickspec_dir(project)
+    feature_path = quickspec_dir / feature_dir
+
+    feature_path.mkdir(parents=True, exist_ok=True)
+    print_success(f"Created: {feature_path}")
+
+    # Update state
+    state["current_quickspec"] = feature_dir
+    state["current_project"] = project
+    save_state(state)
+
+    typer.echo()
+    print_info(f"Feature: {feature_dir}")
+    typer.echo()
+
+    # Phase 1: Spec
+    print_header("Phase 1: Spec")
+    typer.echo("  Creating specification...")
+    typer.echo()
+
+    spec_content = f"""# {description.title()}
+
+## What
+[1-2 sentences - what you're building]
+
+## Why
+[1 sentence - user/business value]
+
+## Acceptance Criteria
+- [ ] [criterion 1]
+- [ ] [criterion 2]
+- [ ] [criterion 3]
+
+## Out of Scope
+- [excluded item]
+"""
+
+    spec_path = feature_path / "spec.md"
+    spec_path.write_text(spec_content)
+    print_success(f"Created: {spec_path}")
+
+    typer.echo()
+    print_info("Please fill in the spec.md with your feature details.")
+    print_info("Keep to 3-5 acceptance criteria max.")
+
+    if not typer.confirm("\n  Ready to proceed to Phase 2 (Plan)?"):
+        typer.echo()
+        print_info(f"Paused. Edit {spec_path} and run 'sdd-chat quickspec {description}' again.")
+        return
+
+    # Phase 2: Plan
+    typer.echo()
+    print_header("Phase 2: Plan")
+    typer.echo("  Scanning codebase and creating plan...")
+    typer.echo()
+
+    plan_content = """# Plan
+
+## Files
+- `path/to/file.py` — [change description]
+- `path/to/new.py` — [create, purpose]
+
+## Approach
+[2-4 sentences on implementation strategy]
+
+## Risks
+- [potential issue, if any]
+"""
+
+    plan_path = feature_path / "plan.md"
+    plan_path.write_text(plan_content)
+    print_success(f"Created: {plan_path}")
+
+    typer.echo()
+    print_info(f"Please fill in {plan_path} with:")
+    print_info("  - Concrete file paths")
+    print_info("  - Implementation approach")
+    print_info("  - Any risks or dependencies")
+
+    if not typer.confirm("\n  Ready to proceed to Phase 3 (Build)?"):
+        typer.echo()
+        print_info(f"Paused. Edit {plan_path} and continue when ready.")
+        return
+
+    # Phase 3: Build
+    typer.echo()
+    print_header("Phase 3: Build")
+    typer.echo("  Implementation phase:")
+    typer.echo()
+    print_step(1, "Follow the plan")
+    print_step(2, "Respect existing code conventions")
+    print_step(3, "Write tests if the project has them")
+    print_step(4, f"Check off acceptance criteria in {spec_path}")
+    print_step(5, "Run existing tests/linting and fix issues")
+
+    typer.echo()
+    print_info("Implement the feature according to your plan.")
+    print_info(f"Update {spec_path} to check off acceptance criteria as you complete them.")
+
+
+@app.command()
+def quickspec_status(
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name (uses current if not specified)"),
+):
+    """
+    Show status of all quickspec features for a project.
+    """
+    print_header("QuickSpec Features")
+
+    # Get current project
+    state = load_state()
+    project = project or state.get("current_project")
+
+    if not project:
+        print_error("No project specified. Run 'sdd-chat init <project>' or 'sdd-chat use <project>' first.")
+        raise typer.Abort()
+
+    typer.echo(f"  Project: {typer.style(project, fg=typer.colors.GREEN, bold=True)}")
+    typer.echo()
+
+    features = list_quickspec_features(project)
+
+    if not features:
+        print_warning("No quickspec features found for this project.")
+        print_info("Run 'sdd-chat quickspec \"feature description\"' to start one.")
+        return
+
+    current = state.get("current_quickspec")
+    quickspec_dir = get_quickspec_dir(project)
+
+    for feature in features:
+        feature_path = quickspec_dir / feature
+        marker = " ◀ current" if feature == current else ""
+        typer.secho(f"  {feature}{marker}", fg=typer.colors.GREEN, bold=True)
+
+        # Check artifacts
+        spec_path = feature_path / "spec.md"
+        plan_path = feature_path / "plan.md"
+
+        spec_status = "✓" if spec_path.exists() else "✗"
+        plan_status = "✓" if plan_path.exists() else "✗"
+
+        typer.echo(f"    spec.md: {spec_status}")
+        typer.echo(f"    plan.md: {plan_status}")
+
+        # Check if acceptance criteria are complete
+        if spec_path.exists():
+            spec_content = spec_path.read_text()
+            total_criteria = spec_content.count("- [ ]") + spec_content.count("- [x]") + spec_content.count("- [X]")
+            completed_criteria = spec_content.count("- [x]") + spec_content.count("- [X]")
+            if total_criteria > 0:
+                typer.echo(f"    Progress: {completed_criteria}/{total_criteria} criteria complete")
+
+        typer.echo()
 
 
 if __name__ == "__main__":
